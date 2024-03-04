@@ -1,5 +1,8 @@
 # Prerequisites
 *.d
+# Folders
+*build*
+.idea
 
 # Compiled Object files
 *.slo
