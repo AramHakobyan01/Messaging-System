@@ -8,6 +8,9 @@
 #include <string>
 #include <thread>
 
+#define PORT 8080
+#define SERVER_IP "127.0.0.1"
+
 Client& Client::GetInstance() {
     static Client instance;
     return instance;

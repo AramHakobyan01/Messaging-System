@@ -1,5 +1,5 @@
 #include <iostream>
-#include "../Client.h"
+#include "../Client/Client.h"
 
 int main(int argc, char const *argv[]) {
     Client& client = Client::GetInstance();
