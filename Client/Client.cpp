@@ -13,18 +13,19 @@ Client& Client::GetInstance() {
     return instance;
 }
 
+// Connect to the server
 void Client::ConnectToServer() {
     sockaddr_in serv_addr {};
 
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        std::cerr << "Socket creation error" << std::endl;
+        std::cerr << "Error creating socket" << std::endl;
         exit(EXIT_FAILURE);
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(8080);
+    serv_addr.sin_port = htons(PORT); // Use a constant for port number
 
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
         std::cerr << "Invalid address/ Address not supported" << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -33,20 +34,24 @@ void Client::ConnectToServer() {
         exit(EXIT_FAILURE);
     }
 
+    // Start a separate thread to read data from the server
     std::thread readerThread(&Client::ReadData, this);
     readerThread.detach();
 }
 
+// Subscribe to a topic
 void Client::Subscribe(const std::string& topic) {
     std::string subscribeMsg = "SUBSCRIBE " + topic;
     send(sock, subscribeMsg.c_str(), subscribeMsg.length(), 0);
     std::cout << "\nSubscribed to topic: " << topic << std::endl;
 }
 
+// Send data to the server
 void Client::SendData(const std::string& data) {
     send(sock, data.c_str(), data.length(), 0);
 }
 
+// Read data from the server
 void Client::ReadData() {
     char buffer[1024] = {0};
     while (true) {
