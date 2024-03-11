@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  server:
+    build: .
+    networks:
+      - my_network
+    stdin_open: true
+    tty: true 
+
+networks:
+  my_network:
+    name: server_my_network
+    driver: bridge
+    external: true
+
