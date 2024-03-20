@@ -4,12 +4,6 @@
 #include <string>
 
 class ServerConfiguration {
-private:
-    std::string listeningInterface;
-    int listeningPort;
-    int maxClientConnections;
-    int bufferSize;
-
 public:
     ServerConfiguration();
     std::string getListeningInterface() const;
@@ -20,6 +14,12 @@ public:
     void setMaxClientConnections(int maxConnections);
     int getBufferSize() const;
     void setBufferSize(int size);
+
+private:
+    std::string listeningInterface;
+    int listeningPort;
+    int maxClientConnections;
+    int bufferSize;
 };
 
 #endif // SERVERCONFIGURATION_H

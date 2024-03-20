@@ -9,11 +9,6 @@
 #include "Message/Message.h"
 
 class Server {
-private:
-    ServerConfiguration configuration;
-    std::map<std::string, ClientGroup> clients;
-    std::queue<Message> messageQueue;
-
 public:
     Server(const ServerConfiguration& config);
     void start();
@@ -22,6 +17,11 @@ public:
     void processClientRequest(const ClientConfig& client);
     void processMessageFromClient(const ClientConfig& client, const Message& message);
     void dispatchMessageToSubscribers(const Message& message);
+
+private:
+    ServerConfiguration configuration;
+    std::map<std::string, ClientGroup> clients;
+    std::queue<Message> messageQueue;
 };
 
 #endif // SERVER_H

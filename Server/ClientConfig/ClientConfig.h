@@ -7,17 +7,17 @@
 #include "../Socket/Socket.h"
 
 class ClientConfig {
-private:
-    Socket socket;
-    std::string name;
-    std::set<std::string> subscribedTopics;
-
 public:
     ClientConfig(const std::string& clientName, const Socket& clientSocket);
     void sendMessage(const Message& message) const;
     void subscribe(const std::string& topic);
     void unsubscribe(const std::string& topic);
     void processReceivedMessage(const Message& message);
+
+private:
+    Socket socket;
+    std::string name;
+    std::set<std::string> subscribedTopics;
 };
 
 #endif // CLIENTCONFIG_H

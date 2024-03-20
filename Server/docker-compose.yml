@@ -12,7 +12,7 @@ services :
     tty : true
 
 networks :
-  server_network : 
+  server_network :
     driver : bridge
 
 

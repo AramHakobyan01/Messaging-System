@@ -6,12 +6,6 @@
 #include <cstdint>
 
 class Message {
-private:
-    int64_t size;
-    std::vector<uint8_t> data;
-    std::string topic;
-    std::string messageId;
-
 public:
     Message();
     int64_t getSize() const;
@@ -21,6 +15,12 @@ public:
     std::string getTopic() const;
     void setMessageId(const std::string& messageId);
     std::string getMessageId() const;
+
+private:
+    int64_t size;
+    std::vector<uint8_t> data;
+    std::string topic;
+    std::string messageId;
 };
 
 #endif // MESSAGE_H
