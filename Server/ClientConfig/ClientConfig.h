@@ -2,7 +2,7 @@
 #define CLIENTCONFIG_H
 
 #include <string>
-#include <set>
+#include <vector>
 #include "../Message/Message.h"
 #include "../Socket/Socket.h"
 
@@ -17,7 +17,7 @@ public:
 private:
     Socket socket;
     std::string name;
-    std::set<std::string> subscribedTopics;
+    std::vector<std::string> subscribedTopics;
 };
 
 #endif // CLIENTCONFIG_H
