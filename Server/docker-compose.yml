@@ -1,18 +1,18 @@
-version: '3.8'
-
-services:
-  server:
-    build: .
-    ports:
+version : '3'
+services :
+  server :
+    build : ./server
+    ports :
       - "8082:8080"
-    networks:
-      - my_network
-    stdin_open: true
-    tty: true 
+    volumes :
+      - ./server:/app/server
+    networks :
+      - server_network
+    stdin_open : true
+    tty : true
 
-networks:
-  my_network:
-    name: server_my_network
-    driver: bridge
-    external: true
+networks :
+  server_network : 
+    driver : bridge
+
 
