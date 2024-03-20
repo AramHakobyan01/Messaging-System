@@ -1,25 +1,27 @@
-#ifndef SERVER_SERVER_H
-#define SERVER_SERVER_H
+#ifndef SERVER_H
+#define SERVER_H
 
-#include <iostream>
-#include <vector>
-#include <string>
 #include <map>
+#include <queue>
+#include "ServerConfiguration/ServerConfiguration.h"
+#include "ClientConfig/ClientConfig.h"
+#include "ClientGroup/ClientGroup.h"
+#include "Message/Message.h"
 
 class Server {
-public:
-    Server() = default;
-    ~Server() = default;
-public:
-    void Init();
-    void Start();
 private:
-    void HandleClient(int client_socket);
-    void ForwardMessage(const std::string& message, int sender_socket);
-private:
-    int m_socket;
-    std::map<std::string, std::vector<int>> m_topics;
-    std::map<int, std::string> m_clients;
+    ServerConfiguration configuration;
+    std::map<std::string, ClientGroup> clients;
+    std::queue<Message> messageQueue;
+
+public:
+    Server(const ServerConfiguration& config);
+    void start();
+    void stop();
+    void acceptNewClient(const ClientConfig& client);
+    void processClientRequest(const ClientConfig& client);
+    void processMessageFromClient(const ClientConfig& client, const Message& message);
+    void dispatchMessageToSubscribers(const Message& message);
 };
 
-#endif //SERVER_SERVER_H
+#endif // SERVER_H
