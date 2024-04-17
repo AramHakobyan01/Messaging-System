@@ -5,13 +5,11 @@
 
 class ServerConfiguration {
 public:
-    ServerConfiguration();
+    ServerConfiguration(const std::string &configFile);
+
     std::string getListeningInterface() const;
-    void setListeningInterface(const std::string& interface);
     int getListeningPort() const;
-    void setListeningPort(int port);
     int getMaxClientConnections() const;
-    void setMaxClientConnections(int maxConnections);
     int getBufferSize() const;
     void setBufferSize(int size);
 

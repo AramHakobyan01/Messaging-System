@@ -1,17 +1,17 @@
-#include <iostream>
-#include "Client.h"
+// client.c
 
-int main(int argc, char const *argv[]) {
-    Client& client = Client::GetInstance();
+#include "../Client/Client.h"
+
+int main() {
+
+    Client client;
     client.ConnectToServer();
-    std::string input;
-    std::cout << "\nEnter topic: ";
-    std::getline(std::cin, input);
-    client.Subscribe(input);
+    client.Subscribe("test");
     while (true) {
-        std::cout << "\nEnter message: ";
-        std::getline(std::cin, input);
-        client.SendData(input);
+        char message[4096];
+        printf("Enter message: ");
+        fgets(message, 4096, stdin);
+        client.SendData(message);
     }
     return 0;
 }

@@ -11,11 +11,6 @@
 #define PORT 8080
 #define SERVER_IP "127.0.0.1"
 
-Client& Client::GetInstance() {
-    static Client instance;
-    return instance;
-}
-
 // Connect to the server
 void Client::ConnectToServer() {
     sockaddr_in serv_addr {};
@@ -44,14 +39,28 @@ void Client::ConnectToServer() {
 
 // Subscribe to a topic
 void Client::Subscribe(const std::string& topic) {
-    std::string subscribeMsg = "SUBSCRIBE " + topic;
-    send(sock, subscribeMsg.c_str(), subscribeMsg.length(), 0);
-    std::cout << "\nSubscribed to topic: " << topic << std::endl;
+    int command = static_cast<int>(Commands::SUBSCRIBE);
+    std::string buffer(sizeof(command), '\0');
+    buffer[0] = static_cast<char>((command >> 24) & 0xFF);
+    buffer[1] = static_cast<char>((command >> 16) & 0xFF);
+    buffer[2] = static_cast<char>((command >> 8) & 0xFF);
+    buffer[3] = static_cast<char>(command & 0xFF);
+    buffer.append(topic);
+
+    send(sock, buffer.c_str(), buffer.length(), 0);
 }
 
 // Send data to the server
 void Client::SendData(const std::string& data) {
-    send(sock, data.c_str(), data.length(), 0);
+    int command = static_cast<int>(Commands::SEND_DATA);
+    std::string buffer(sizeof(command), '\0');
+    buffer[0] = static_cast<char>((command >> 24) & 0xFF);
+    buffer[1] = static_cast<char>((command >> 16) & 0xFF);
+    buffer[2] = static_cast<char>((command >> 8) & 0xFF);
+    buffer[3] = static_cast<char>(command & 0xFF);
+    buffer.append(data);
+
+    send(sock, buffer.c_str(), buffer.length(), 0);
 }
 
 // Read data from the server

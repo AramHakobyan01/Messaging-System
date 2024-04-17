@@ -1,27 +1,30 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include <map>
-#include <queue>
+#include "Socket/SocketManager.h"
 #include "ServerConfiguration/ServerConfiguration.h"
-#include "ClientConfig/ClientConfig.h"
-#include "ClientGroup/ClientGroup.h"
-#include "Message/Message.h"
+#include "Client/Client.h"
 
 class Server {
 public:
-    Server(const ServerConfiguration& config);
+    Server();
+    ~Server();
+
     void start();
-    void stop();
-    void acceptNewClient(const ClientConfig& client);
-    void processClientRequest(const ClientConfig& client);
-    void processMessageFromClient(const ClientConfig& client, const Message& message);
-    void dispatchMessageToSubscribers(const Message& message);
+private:
+    void initListener();
+    void acceptConnection();
+    void handleClient(int client_fd);
+    void receiveData(Client client);
+    void sendData(int client_fd, const void* buf, size_t len);
+    void processMessage(const Message& message, Client client);
 
 private:
-    ServerConfiguration configuration;
-    std::map<std::string, ClientGroup> clients;
-    std::queue<Message> messageQueue;
+    int listen_fd;
+    std::vector<Client> clients;
+    ServerConfiguration serverConfiguration;
+    SocketManager socketManager;
 };
+
 
 #endif // SERVER_H
