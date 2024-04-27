@@ -5,7 +5,7 @@
 
 class ServerConfiguration {
 public:
-    ServerConfiguration(const std::string &configFile);
+    explicit ServerConfiguration(const std::string &configFile);
 
     std::string getListeningInterface() const;
     int getListeningPort() const;

@@ -13,13 +13,12 @@ struct Message {
     int size;
     std::string topic;
 
-    Message(int size) :
+    explicit Message(int size) :
         size(size),
         data(new char[size]) {}
 
     ~Message() {
-        if(data != nullptr)
-            delete[] data;
+        delete[] data;
     }
 };
 

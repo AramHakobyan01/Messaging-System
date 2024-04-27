@@ -10,14 +10,14 @@ public:
     Server();
     ~Server();
 
-    void start();
+    [[noreturn]] void start();
 private:
     void initListener();
     void acceptConnection();
     void handleClient(int client_fd);
     void receiveData(Client client);
     void sendData(int client_fd, const void* buf, size_t len);
-    void processMessage(const Message& message, Client client);
+    void processMessage(Message& message, Client client);
 
 private:
     int listen_fd;

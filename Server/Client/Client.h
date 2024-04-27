@@ -14,7 +14,7 @@ public:
     // Getters
     int getFD();
 
-    Commands processMessage(const Message& message);
+    Commands getCommand(Message& message);
 private:
     int fd;
     std::vector<std::string> subscriptions;

@@ -4,8 +4,10 @@
 #include <netinet/in.h>
 #include <iostream>
 #include <thread>
+#include <arpa/inet.h>
 
 Server::Server() :
+    listen_fd(0),
     socketManager(),
     serverConfiguration("config.yaml") {
 }
@@ -16,7 +18,7 @@ Server::~Server() {
     }
 }
 
-void Server::start() {
+[[noreturn]] void Server::start() {
     initListener(); // Change parameters as needed
 
     while (true) {
@@ -26,9 +28,9 @@ void Server::start() {
 
 void Server::initListener() {
     listen_fd = socketManager.createSocket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in serv_addr;
+    struct sockaddr_in serv_addr{};
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    inet_pton(AF_INET, serverConfiguration.getListeningInterface().c_str(), &serv_addr.sin_addr);
     serv_addr.sin_port = htons(serverConfiguration.getListeningPort());
 
     socketManager.bindSocket(listen_fd, reinterpret_cast<const struct sockaddr*>(&serv_addr), sizeof(serv_addr));
@@ -37,7 +39,7 @@ void Server::initListener() {
 }
 
 void Server::acceptConnection() {
-    struct sockaddr_in client_addr;
+    struct sockaddr_in client_addr{};
     socklen_t client_addrlen = sizeof(client_addr);
     int client_fd = socketManager.acceptSocket(listen_fd, reinterpret_cast<struct sockaddr*>(&client_addr), &client_addrlen);
     if (client_fd >= 0) {
@@ -79,8 +81,8 @@ void Server::sendData(int client_fd, const void* buf, size_t len) {
     }
 }
 
-void Server::processMessage(const Message& message, Client client) {
-    Commands command = client.processMessage(message);
+void Server::processMessage(Message& message, Client client) {
+    Commands command = client.getCommand(message);
     switch (command) {
         case Commands::SEND_DATA:
             sendData(client.getFD(), "barev client", 64);
