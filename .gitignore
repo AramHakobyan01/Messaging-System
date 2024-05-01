@@ -3,7 +3,6 @@
 # Folders
 *build*
 .idea
-*CMakeLists*
 
 # Compiled Object files
 *.slo
