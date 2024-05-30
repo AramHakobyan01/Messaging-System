@@ -11,7 +11,6 @@ public:
     int getListeningPort() const;
     int getMaxClientConnections() const;
     int getBufferSize() const;
-    void setBufferSize(int size);
 
 private:
     std::string listeningInterface;

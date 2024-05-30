@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
-#define QUEUE_DEPTH 128
+#include "../Helpers/Structures.h"
 
 SocketManager::SocketManager() {
     if (io_uring_queue_init(QUEUE_DEPTH, &ring, 0) < 0) {
@@ -22,7 +22,7 @@ SocketManager::~SocketManager() {
 int SocketManager::createSocket(int domain, int type, int protocol) {
     int sockfd = socket(domain, type | SOCK_NONBLOCK, protocol);
     if (sockfd < 0) {
-        std::cerr << "Socket creation failed: " << strerror(errno) << std::endl;
+        std::cerr << "SocketManager creation failed: " << strerror(errno) << std::endl;
         exit(errno); // Exit with errno
     }
     return sockfd;
@@ -42,6 +42,7 @@ void SocketManager::listenSocket(int sockfd, int backlog) {
     }
 }
 
+
 int SocketManager::acceptSocket(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
     int client_fd = accept4(sockfd, addr, addrlen, SOCK_NONBLOCK);
     if (client_fd < 0) {
@@ -53,9 +54,10 @@ int SocketManager::acceptSocket(int sockfd, struct sockaddr *addr, socklen_t *ad
     return client_fd;
 }
 
-int SocketManager::receiveData(int sockfd, void *buf, size_t len, int flags) {
+int SocketManager::receiveData(int sockfd, std::vector<uint8_t> &data, size_t len, int flags) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_recv(sqe, sockfd, buf, len, flags);
+    uint8_t* tmpBuf = new uint8_t[len];
+    io_uring_prep_recv(sqe, sockfd, tmpBuf, len, flags);
     io_uring_sqe_set_data(sqe, nullptr);
     if (io_uring_submit(&ring) < 0) {
         std::cerr << "io_uring_submit failed: " << strerror(errno) << std::endl;
@@ -76,7 +78,11 @@ int SocketManager::receiveData(int sockfd, void *buf, size_t len, int flags) {
     }
 
     int recv_size = cqe->res;
-    io_uring_cqe_seen(&ring, cqe); // Release the completion queue entry
+    // Release the completion queue entry
+    io_uring_cqe_seen(&ring, cqe);
+
+    data.insert(data.end(), tmpBuf, tmpBuf + recv_size);
+    delete[] tmpBuf;
     return recv_size;
 }
 
@@ -104,5 +110,7 @@ int SocketManager::sendData(int sockfd, const void *buf, size_t len, int flags) 
 
 
 void SocketManager::closeSocket(int sockfd) {
-    close(sockfd);
+    if (sockfd >= 0) {
+        close(sockfd);
+    }
 }

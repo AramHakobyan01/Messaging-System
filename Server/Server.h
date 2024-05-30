@@ -1,9 +1,9 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include "Socket/SocketManager.h"
+#include "SocketManager//SocketManager.h"
 #include "ServerConfiguration/ServerConfiguration.h"
-#include "Client/Client.h"
+#include "Helpers/Utilities.h"
 
 class Server {
 public:
@@ -14,16 +14,17 @@ public:
 private:
     void initListener();
     void acceptConnection();
-    void handleClient(int client_fd);
+    void handleClient(const Client& client);
     void receiveData(Client client);
-    void sendData(int client_fd, const void* buf, size_t len);
-    void processMessage(Message& message, Client client);
+    void sendMessageToClients();
+    void sendSimpleResponse();
+    bool processMessage(std::vector<uint8_t>& data, Client& client);
 
 private:
     int listen_fd;
-    std::vector<Client> clients;
     ServerConfiguration serverConfiguration;
     SocketManager socketManager;
+    std::atomic<bool> responseTriggered = false;
 };
 
 
