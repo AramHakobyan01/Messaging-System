@@ -274,6 +274,30 @@ int Database::getTopicByName(const std::string &topic_name) {
     return topic_id;
 }
 
+std::string Database::getTopicByID(int topic_id) {
+    const char* sql = "SELECT name FROM topics WHERE id = ?;";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << std::endl;
+        return "";
+    }
+
+    sqlite3_bind_int(stmt, 1, topic_id);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        std::cerr << "SQL error (step): " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        return "";
+    }
+
+    const unsigned char* text = sqlite3_column_text(stmt, 0);
+    std::string topic_name = text ? reinterpret_cast<const char*>(text) : "";
+
+    sqlite3_finalize(stmt);
+    return topic_name;
+}
+
 std::vector<Message> Database::getUndeliveredMessages() {
     const char* sql = "SELECT id, size, data, topic_id FROM messages WHERE id IN (SELECT message_id FROM delivery WHERE delivered = 0);";
     sqlite3_stmt* stmt;
@@ -288,8 +312,8 @@ std::vector<Message> Database::getUndeliveredMessages() {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Message message;
         message.id = sqlite3_column_int(stmt, 0);
-        message.size = sqlite3_column_int(stmt, 1);
-        message.data.assign((uint8_t*)sqlite3_column_blob(stmt, 2), (uint8_t*)sqlite3_column_blob(stmt, 2) + message.size);
+        int message_size = sqlite3_column_int(stmt, 1);
+        message.data.assign((uint8_t*)sqlite3_column_blob(stmt, 2), (uint8_t*)sqlite3_column_blob(stmt, 2) + message_size);
         message.topic_id = sqlite3_column_int(stmt, 3);
         messages.push_back(message);
     }

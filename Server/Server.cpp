@@ -95,6 +95,7 @@ void Server::sendMessageToClients() {
         if (!responseTriggered) {
             std::vector<Message> messages = Database::get()->getUndeliveredMessages();
             for (auto& message : messages) {
+                std::cout << message.topic_id << std::endl;
                 std::vector<int> client_ids = Database::get()->getSubscribedClients(message.topic_id);
                 for (int client_id : client_ids) {
                     Client client;
@@ -106,14 +107,14 @@ void Server::sendMessageToClients() {
                         std::vector<uint8_t> data;
                         message.command = (int)Commands::SEND_DATA_RESPONSE;
                         Utilities::get()->encodePacket(message, data);
-                        if(socketManager.sendData(client.fd, data.data(), data.size(), 0) == 0) {
+                        if(socketManager.sendData(client.fd, data, data.size(), 0) == 0) {
                             Database::get()->markMessageAsDelivered(message.id, client_id);
                         }
                     }
                 }
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -124,7 +125,7 @@ void Server::sendSimpleResponse(const Client& client, Commands command) {
     message.topic_id = 0;
     std::vector<uint8_t> data;
     Utilities::get()->encodePacket(message, data);
-    socketManager.sendData(client.fd, data.data(), data.size(), 0);
+    socketManager.sendData(client.fd, data, data.size(), 0);
     responseTriggered = false;
 }
 
@@ -134,7 +135,6 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
         sendSimpleResponse(client, Commands::DECODE_ERROR);
         return true;
     }
-    std::cout << "command " << message.command << std::endl;
     switch ((Commands)message.command) {
         case Commands::SEND_DATA: {
             if(message.topic_id <= 0) {
@@ -240,7 +240,31 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
             response_message.data.insert(response_message.data.end(), topics.begin(), topics.end());
             std::vector<uint8_t> response;
             Utilities::get()->encodePacket(response_message, response);
-            socketManager.sendData(client.fd, response.data(), response.size(), 0);
+            socketManager.sendData(client.fd, response, response.size(), 0);
+            responseTriggered = false;
+
+            return true;
+        }
+        case Commands::GET_TOPIC_NAME: {
+            if(message.topic_id <= 0) {
+                sendSimpleResponse(client, Commands::WRONG_TOPIC);
+                return true;
+            }
+
+            std::string topicName = Database::get()->getTopicByID(message.topic_id);
+            if(topicName == "") {
+                sendSimpleResponse(client, Commands::DB_ERROR);
+                return true;
+            }
+
+            responseTriggered = true;
+            Message response_message;
+            response_message.command = (int)Commands::GET_TOPIC_NAME_RESPONSE;
+            response_message.topic_id = message.topic_id;
+            response_message.data.insert(response_message.data.end(), topicName.begin(), topicName.end());
+            std::vector<uint8_t> response;
+            Utilities::get()->encodePacket(response_message, response);
+            socketManager.sendData(client.fd, response, response.size(), 0);
             responseTriggered = false;
 
             return true;

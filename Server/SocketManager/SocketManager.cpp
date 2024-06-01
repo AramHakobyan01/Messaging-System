@@ -86,10 +86,10 @@ int SocketManager::receiveData(int sockfd, std::vector<uint8_t> &data, size_t le
     return recv_size;
 }
 
-int SocketManager::sendData(int sockfd, const void *buf, size_t len, int flags) {
+int SocketManager::sendData(int sockfd, const std::vector<uint8_t> &data, size_t len, int flags) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_send(sqe, sockfd, const_cast<void *>(buf), len, flags);
-    io_uring_sqe_set_data(sqe, const_cast<void *>(buf)); // Set buffer pointer as user data
+    io_uring_prep_send(sqe, sockfd, data.data(), len, flags);
+    io_uring_sqe_set_data(sqe, (void *) data.data()); // Set buffer pointer as user data
     if (io_uring_submit(&ring) < 0) {
         std::cerr << "io_uring_submit failed: " << strerror(errno) << std::endl;
         return -1; // Return error code

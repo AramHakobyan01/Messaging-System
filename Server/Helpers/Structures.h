@@ -27,13 +27,11 @@ struct Message {
     int id;
     int topic_id;
     int command;
-    uint64_t size;
     std::vector<uint8_t> data;
     Message() {
         id = 0;
         topic_id = 0;
         command = 0;
-        size = 0;
     }
 };
 
@@ -58,10 +56,12 @@ enum class Commands {
     UNSUBSCRIBE,
     SEND_DATA,
     CONNECT,
+    GET_TOPIC_NAME,
     DISCONNECT,
 
     TOPICS_RESPONSE,
     SEND_DATA_RESPONSE,
+    GET_TOPIC_NAME_RESPONSE,
 
     SUCCESS,
     DB_ERROR,

@@ -1,14 +1,16 @@
+# Stage 1: Build
 FROM gcc:latest AS builder
 
-# Install CMake
+# Install dependencies
 RUN apt-get update && apt-get install -y cmake
 
+# Create and set working directory
 WORKDIR /app
 
 # Copy all project files to the container
 COPY . .
 
-# Create a build directory and change to it
+# Create a build directory
 RUN mkdir -p build
 WORKDIR /app/build
 
@@ -16,14 +18,17 @@ WORKDIR /app/build
 RUN cmake ..
 RUN make
 
-# Use a minimal base image for the runtime environment
+# Stage 2: Run
 FROM archlinux:latest
 
+# Install any runtime dependencies (e.g., libstdc++)
+RUN pacman -Sy --noconfirm libstdc++6
+
 # Set the working directory
-WORKDIR /app/server
+WORKDIR /app/Simple_Example
 
 # Copy the built application from the builder stage
-COPY --from=builder /app/build/Server /app/server
+COPY --from=builder /app/build/Simple_Example /app/Simple_Example
 
 # Set the command to run the server
-CMD ["./Server"]
+CMD ["./Simple_Example"]

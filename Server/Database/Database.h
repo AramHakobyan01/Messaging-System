@@ -20,6 +20,7 @@ public:
     bool trackDelivery(int message_id, int client_id);
     int getClientNameByAddress(uint32_t client_address);
     int getTopicByName(const std::string &topic_name);
+    std::string getTopicByID(int topic_id);
     std::vector<Message> getUndeliveredMessages();
 
     bool markMessageAsDelivered(int message_id, int client_id);
