@@ -11,7 +11,8 @@
 Server::Server() :
     listen_fd(0),
     socketManager(),
-    serverConfiguration("config.yaml") {
+    serverConfiguration("config.yaml"),
+    responseTriggered(false){
 }
 
 Server::~Server() {
@@ -68,12 +69,18 @@ void Server::receiveData(Client client) {
         if (size < 0) {
             std::cerr << "Receive failed for client_fd: " << client.fd << std::endl;
             socketManager.closeSocket(client.fd);
-            // TODO error handling
+            if(client.id > 0) {
+                clients.erase(client.id);
+                Database::get()->setClientInactive(client.id);
+            }
             return;
         } else if (size == 0) {
             std::cout << "Connection closed by client_fd: " << client.fd << std::endl;
             socketManager.closeSocket(client.fd);
-            // TODO error handling
+            if(client.id > 0) {
+                clients.erase(client.id);
+                Database::get()->setClientInactive(client.id);
+            }
             return;
         } else {
             // Process received data
@@ -85,59 +92,84 @@ void Server::receiveData(Client client) {
 
 void Server::sendMessageToClients() {
     while (true) {
-        std::vector<Message> messages = Database::get()->getUndeliveredMessages();
-        for (const auto& message : messages) {
-            std::vector<int> clients = Database::get()->getSubscribedClients(message.topic_id);
-//            for (const auto& client : clients) {
-//                if (sendDataToClient(client.fd, message.data)) {
-//                    Database::get()->markMessageAsDelivered(message.id, client.id);
-//                }
-//            }
+        if (!responseTriggered) {
+            std::vector<Message> messages = Database::get()->getUndeliveredMessages();
+            for (auto& message : messages) {
+                std::vector<int> client_ids = Database::get()->getSubscribedClients(message.topic_id);
+                for (int client_id : client_ids) {
+                    Client client;
+                    auto it = clients.find(client_id);
+                    if (it != clients.end()) {
+                        client = it->second;
+                    }
+                    if (client.fd > 0) {
+                        std::vector<uint8_t> data;
+                        message.command = (int)Commands::SEND_DATA_RESPONSE;
+                        Utilities::get()->encodePacket(message, data);
+                        if(socketManager.sendData(client.fd, data.data(), data.size(), 0) == 0) {
+                            Database::get()->markMessageAsDelivered(message.id, client_id);
+                        }
+                    }
+                }
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
-void Server::sendSimpleResponse() {
-
+void Server::sendSimpleResponse(const Client& client, Commands command) {
+    responseTriggered = true;
+    Message message;
+    message.command = (int)command;
+    message.topic_id = 0;
+    std::vector<uint8_t> data;
+    Utilities::get()->encodePacket(message, data);
+    socketManager.sendData(client.fd, data.data(), data.size(), 0);
+    responseTriggered = false;
 }
 
 bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
     Message message;
     if(!Utilities::get()->decodePacket(data, message)) {
-        // TODO error handling
+        sendSimpleResponse(client, Commands::DECODE_ERROR);
+        return true;
     }
     std::cout << "command " << message.command << std::endl;
     switch ((Commands)message.command) {
         case Commands::SEND_DATA: {
             if(message.topic_id <= 0) {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::WRONG_TOPIC);
+                return true;
             }
             std::vector<int> subscribedClients = Database::get()->getSubscribedClients(message.topic_id);
 
             if(subscribedClients.size() == 0) {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::HAVE_NOT_CLIENTS_SUBSCRIBED);
+                return true;
             }
 
             if(client.id <= 0) {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::NOT_CONNECTED);
+                return true;
             }
             int message_id = 0;
 
             if(!Database::get()->storeMessage(message, message_id)) {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::DECODE_ERROR);
+                return true;
             }
 
             for (int i = 0; i < subscribedClients.size(); i++) {
                 if(subscribedClients.at(i) != client.id) {
-                    if(Database::get()->trackDelivery(message_id, subscribedClients.at(i))) {
-                        // TODO error handling
+                    if(!Database::get()->trackDelivery(message_id, subscribedClients.at(i))) {
+                        sendSimpleResponse(client, Commands::DECODE_ERROR);
+                        return true;
                     }
                 }
             }
 
-            // TODO send success
-            break;
+            sendSimpleResponse(client, Commands::SUCCESS);
+            return true;
         }
         case Commands::CREATE_TOPIC: {
             std::string topic(reinterpret_cast<const char *>(message.data.data()), message.data.size());
@@ -145,10 +177,12 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
             int topic_id = Database::get()->insertTopic(topic);
 
             if(topic_id == -1) {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::DB_ERROR);
+                return true;
             }
 
-            // TODO send to client topic id
+            sendSimpleResponse(client, Commands::SUCCESS);
+            return true;
         }
         case Commands::SUBSCRIBE: {
             std::string topic(reinterpret_cast<const char *>(message.data.data()), message.data.size());
@@ -157,36 +191,65 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
 
             if(client.id > 0 && topic_id > 0) {
                 if(!Database::get()->subscribeClientToTopic(client.id, topic_id)) {
-                    // TODO error handling
+                    sendSimpleResponse(client, Commands::DB_ERROR);
+                    return true;
                 }
             } else {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::INVALID_CLIENT);
+                return true;
             }
 
-            break;
+            sendSimpleResponse(client, Commands::SUCCESS);
+            return true;
         }
         case Commands::UNSUBSCRIBE: {
             std::string topic(reinterpret_cast<const char *>(message.data.data()), message.data.size());
 
-
             if(client.id > 0 && message.topic_id > 0) {
                 if(!Database::get()->unsubscribeClientFromTopic(client.id, message.topic_id)) {
-                    // TODO error handling
+                    sendSimpleResponse(client, Commands::DB_ERROR);
+                    return true;
                 }
             } else {
-                // TODO error handling
+                sendSimpleResponse(client, Commands::INVALID_CLIENT);
+                return true;
             }
+
+            sendSimpleResponse(client, Commands::SUCCESS);
+            return true;
         }
         case Commands::CONNECT: {
             std::string data(reinterpret_cast<const char *>(message.data.data()), message.data.size());
-            Database::get()->insertClient(data, client.address, client.id);
-            // TODO error handling
+            if(!Database::get()->insertOrUpdateClient(data, client.address, client.id)) {
+                sendSimpleResponse(client, Commands::DB_ERROR);
+                return true;
+            }
+
+            clients.emplace(client.id, client);
+
+            std::vector<int> topics = Database::get()->getSubscribedTopics(client.id);
+            if(topics.size() == 0) {
+                sendSimpleResponse(client, Commands::SUCCESS);
+                return true;
+            }
+
+            responseTriggered = true;
+            Message response_message;
+            response_message.command = (int)Commands::TOPICS_RESPONSE;
+            response_message.topic_id = 0;
+            response_message.data.insert(response_message.data.end(), topics.begin(), topics.end());
+            std::vector<uint8_t> response;
+            Utilities::get()->encodePacket(response_message, response);
+            socketManager.sendData(client.fd, response.data(), response.size(), 0);
+            responseTriggered = false;
+
+            return true;
         }
         case Commands::DISCONNECT: {
             Database::get()->unsubscribeClientFromAllTopic(client.id);
             Database::get()->deleteClientById(client.id);
-            // TODO error handling
             socketManager.closeSocket(client.fd);
+            clients.erase(client.id);
             return false;
         }
         default:

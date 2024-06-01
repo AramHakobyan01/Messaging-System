@@ -46,12 +46,16 @@ bool Database::insertTopic(const std::string& topic_name) {
     return true;
 }
 
-bool Database::insertClient(const std::string& name, uint32_t client_address, int& client_id) {
-    const char* sql = "INSERT INTO clients (name, client_address, is_active) VALUES (?, ?, ?);";
+bool Database::insertOrUpdateClient(const std::string& name, uint32_t client_address, int& client_id) {
+    const char* insert_sql = "INSERT OR IGNORE INTO clients (name, client_address, is_active) VALUES (?, ?, ?);";
+    const char* update_sql = "UPDATE clients SET is_active = 1 WHERE name = ? AND client_address = ?;";
     sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    int rc;
+
+    // Prepare and execute the INSERT statement
+    rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
-        std::cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "SQL error (prepare insert): " << sqlite3_errmsg(db) << std::endl;
         return false;
     }
 
@@ -61,15 +65,59 @@ bool Database::insertClient(const std::string& name, uint32_t client_address, in
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
-        std::cerr << "SQL error (step): " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "SQL error (step insert): " << sqlite3_errmsg(db) << std::endl;
         sqlite3_finalize(stmt);
         return false;
     }
-
-    client_id = sqlite3_last_insert_rowid(db);
     sqlite3_finalize(stmt);
+
+    // If no row was inserted (client already exists), execute the UPDATE statement
+    if (sqlite3_changes(db) == 0) {
+        rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            std::cerr << "SQL error (prepare update): " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, client_address);
+
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            std::cerr << "SQL error (step update): " << sqlite3_errmsg(db) << std::endl;
+            sqlite3_finalize(stmt);
+            return false;
+        }
+        sqlite3_finalize(stmt);
+
+        // Retrieve the client_id of the updated row
+        const char* select_sql = "SELECT id FROM clients WHERE name = ? AND client_address = ?;";
+        rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            std::cerr << "SQL error (prepare select): " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, client_address);
+
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            client_id = sqlite3_column_int(stmt, 0);
+        } else {
+            std::cerr << "SQL error (select): " << sqlite3_errmsg(db) << std::endl;
+            sqlite3_finalize(stmt);
+            return false;
+        }
+        sqlite3_finalize(stmt);
+    } else {
+        // If a new row was inserted, retrieve the client_id
+        client_id = sqlite3_last_insert_rowid(db);
+    }
+
     return true;
 }
+
 
 bool Database::subscribeClientToTopic(int client_id, int topic_id) {
     const char* sql = "INSERT INTO subscriptions (client_id, topic_id) VALUES (?, ?);";
@@ -137,6 +185,26 @@ std::vector<int> Database::getSubscribedClients(int topic_id) {
 
     sqlite3_finalize(stmt);
     return client_ids;
+}
+
+std::vector<int> Database::getSubscribedTopics(int client_id) {
+    const char* sql = "SELECT t.id FROM topics t JOIN subscriptions s ON t.id = s.topic_id WHERE s.client_id = ?;";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << std::endl;
+        return {};
+    }
+
+    sqlite3_bind_int(stmt, 1, client_id);
+
+    std::vector<int> topic_ids;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        topic_ids.push_back(sqlite3_column_int(stmt, 0));
+    }
+
+    sqlite3_finalize(stmt);
+    return topic_ids;
 }
 
 bool Database::trackDelivery(int message_id, int client_id) {
@@ -254,6 +322,28 @@ bool Database::markMessageAsDelivered(int message_id, int client_id) {
     return true;
 }
 
+bool Database::setClientInactive(int client_id) {
+    const char* sql = "UPDATE clients SET is_active = 0 WHERE id = ?;";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+
+    sqlite3_bind_int(stmt, 1, client_id);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std::cerr << "SQL error (step): " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        return false;
+    }
+
+    sqlite3_finalize(stmt);
+    return true;
+}
+
 bool Database::unsubscribeClientFromTopic(int client_id, int topic_id) {
     const char* sql = "DELETE FROM subscriptions WHERE client_id = ? AND topic_id = ?;";
     sqlite3_stmt* stmt;
@@ -347,8 +437,9 @@ void Database::setupDatabase() {
         CREATE TABLE IF NOT EXISTS clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             is_active BOOLEAN DEFAULT 0,
-            client_address INTEGER NOT NULL UNIQUE,
-            name TEXT NOT NULL
+            client_address INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            UNIQUE(name, client_address)
         );
         CREATE TABLE IF NOT EXISTS topics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -60,7 +60,7 @@ bool Utilities::encodePacket(Message& message, std::vector<uint8_t>& data) {
     tmpData.clear();
     tmpData.push_back(message.command);
     tmpData.push_back(message.topic_id);
-    tmpData.insert(data.end(), &message.data[0], &message.data[0] + message.data.size());
+    tmpData.insert(tmpData.end(), &message.data[0], &message.data[0] + message.data.size());
 
     packetCRC = MODBUS_CRC16(tmpData.data(), tmpData.size());
 
@@ -86,6 +86,8 @@ bool Utilities::decodePacket(std::vector<uint8_t>& data, Message& message) {
 
     if(!isCorrect)
         return false;
+
+    data = packet.data;
 
     crcBuffer = MODBUS_CRC16(data.data(), data.size() - crcSize);
     crcBuff_L = getLowByte(crcBuffer);
@@ -130,9 +132,9 @@ bool Utilities::checkIsPacketCorrect(Packet& packet, uint8_t byte) {
             if (packet.isStartExist == true) {
                 if (packet.isCtrlEscExist == true) {
                     packet.isCtrlEscExist = false;
-                    packet.data[packet.packetPtr] = byte ^ CTRL_ESC_MASK;
+                    packet.data.push_back(byte ^ CTRL_ESC_MASK);
                 } else {
-                    packet.data[packet.packetPtr] = byte;
+                    packet.data.push_back(byte);
                 }
                 packet.packetPtr++;
             }

@@ -17,14 +17,15 @@ private:
     void handleClient(const Client& client);
     void receiveData(Client client);
     void sendMessageToClients();
-    void sendSimpleResponse();
+    void sendSimpleResponse(const Client& client, Commands command);
     bool processMessage(std::vector<uint8_t>& data, Client& client);
 
 private:
     int listen_fd;
     ServerConfiguration serverConfiguration;
     SocketManager socketManager;
-    std::atomic<bool> responseTriggered = false;
+    std::unordered_map<int, Client> clients;
+    std::atomic<bool> responseTriggered;
 };
 
 
