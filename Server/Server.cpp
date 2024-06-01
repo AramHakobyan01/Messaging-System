@@ -23,6 +23,7 @@ Server::~Server() {
 
 [[noreturn]] void Server::start() {
     initListener();
+    std::cout << "server started" << std::endl;
     std::thread responseThread(&Server::sendMessageToClients, this);
     responseThread.detach();
 

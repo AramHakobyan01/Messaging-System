@@ -18,5 +18,7 @@ FROM archlinux:latest
 WORKDIR /app/Simple_Example
 
 COPY --from=builder /app/build/Simple_Example /app/Simple_Example
+COPY Client/libclient.so /app/Simple_Example
+ENV LD_LIBRARY_PATH=/app/Simple_Example
 
 CMD ["./Simple_Example"]

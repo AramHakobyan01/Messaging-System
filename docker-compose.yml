@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  server:
+    build: ./Server
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./Server:/app/build/server
+      - /lib/modules:/lib/modules 
+    privileged: true 
+    stdin_open: true
+    tty: true
+    networks:
+      messaging_sever:
+        ipv4_address: 172.25.0.3
+
+  simple_example:
+    build: ./Simple_Example
+    ports:
+      - "8083:8080"
+    volumes:
+      - ./Simple_Example:/app/build/simple_example
+      - /lib/modules:/lib/modules
+    privileged: true 
+    stdin_open: true
+    tty: true
+    networks:
+      messaging_sever:
+        ipv4_address: 172.25.0.2
+
+networks:
+  messaging_sever:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.0.0/16
+
