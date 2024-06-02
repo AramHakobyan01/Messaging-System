@@ -13,6 +13,9 @@ Server::Server() :
     socketManager(),
     serverConfiguration("config.yaml"),
     responseTriggered(false){
+
+    socketManager.onAccept = std::bind(&Server::onAccept, this, std::placeholders::_1);
+    socketManager.onReceive = std::bind(&Server::onReceive, this, std::placeholders::_1, std::placeholders::_2);
 }
 
 Server::~Server() {
@@ -27,8 +30,13 @@ Server::~Server() {
     std::thread responseThread(&Server::sendMessageToClients, this);
     responseThread.detach();
 
-    while (true) {
-        acceptConnection();
+    std::thread receiveThread(&SocketManager::processEvents, &socketManager);
+    receiveThread.detach();
+
+    while(true) {
+        struct sockaddr_in client_addr{};
+        socklen_t client_addrlen = sizeof(client_addr);
+        socketManager.initiateAccept(listen_fd, reinterpret_cast<struct sockaddr *>(&client_addr), &client_addrlen);
         sleep(1);
     }
 }
@@ -45,48 +53,56 @@ void Server::initListener() {
     socketManager.listenSocket(listen_fd, serverConfiguration.getMaxClientConnections() == 0 ? SOMAXCONN : serverConfiguration.getMaxClientConnections());
 }
 
-void Server::acceptConnection() {
+void Server::onAccept(int client_fd) {
+    // Handle client operations asynchronously
     struct sockaddr_in client_addr{};
     socklen_t client_addrlen = sizeof(client_addr);
+    getpeername(client_fd, reinterpret_cast<struct sockaddr*>(&client_addr), &client_addrlen);
     Client client;
-    client.fd = socketManager.acceptSocket(listen_fd, reinterpret_cast<struct sockaddr*>(&client_addr), &client_addrlen);
-    if (client.fd > 0) {
-        client.address = client_addr.sin_addr.s_addr;
-        handleClient(client);
-    }
+    client.fd = client_fd;
+    client.address = client_addr.sin_addr.s_addr;
+    clients.push_back(client);
+    socketManager.initiateReceive(client.fd, serverConfiguration.getBufferSize(), 0);
 }
 
-void Server::handleClient(const Client& client) {
-    // Handle client operations asynchronously
-    std::thread receiveThread(&Server::receiveData, this, client);
-    receiveThread.detach();
-}
+void Server::onReceive(int client_fd, std::vector<uint8_t>& data) {
 
-void Server::receiveData(Client client) {
-    // Receive data asynchronously using io_uring
-    while (true) {
-        std::vector<uint8_t> data;
-        int size = socketManager.receiveData(client.fd, data, serverConfiguration.getBufferSize(), 0);
-        if (size < 0) {
-            std::cerr << "Receive failed for client_fd: " << client.fd << std::endl;
-            socketManager.closeSocket(client.fd);
-            if(client.id > 0) {
-                clients.erase(client.id);
-                Database::get()->setClientInactive(client.id);
-            }
-            return;
-        } else if (size == 0) {
-            std::cout << "Connection closed by client_fd: " << client.fd << std::endl;
-            socketManager.closeSocket(client.fd);
-            if(client.id > 0) {
-                clients.erase(client.id);
-                Database::get()->setClientInactive(client.id);
-            }
-            return;
-        } else {
-            // Process received data
-            if(!processMessage(data, client))
+    if(data.size() > 0)
+        socketManager.initiateReceive(client_fd, serverConfiguration.getBufferSize(), 0);
+    else {
+        socketManager.closeSocket(client_fd);
+        for(int i = 0; i < clients.size(); i++) {
+            if(clients.at(i) .fd == client_fd) {
+                if(clients.at(i) .id > 0) {
+                    clientsMap.erase(clients.at(i) .id);
+                    Database::get()->setClientInactive(clients.at(i) .id);
+                }
+                clients.erase(clients.begin() + 1);
                 return;
+            }
+        }
+    }
+
+    Client* client = nullptr;
+    for(int i = 0; i < clients.size(); i++) {
+        if(clients.at(i) .fd == client_fd) {
+            client = &clients.at(i);
+            break;
+        }
+    }
+
+    if (!processMessage(data, *client)) {
+        socketManager.closeSocket(client_fd);
+        for(int i = 0; i < clients.size(); i++) {
+            if(clients.at(i) .fd == client_fd) {
+                clients.erase(clients.begin() + i);
+                break;
+            }
+        }
+        if(client->id > 0) {
+            clientsMap.erase(client->id);
+            Database::get()->setClientInactive(client->id);
+            return;
         }
     }
 }
@@ -100,17 +116,16 @@ void Server::sendMessageToClients() {
                 std::vector<int> client_ids = Database::get()->getSubscribedClients(message.topic_id);
                 for (int client_id : client_ids) {
                     Client client;
-                    auto it = clients.find(client_id);
-                    if (it != clients.end()) {
+                    auto it = clientsMap.find(client_id);
+                    if (it != clientsMap.end()) {
                         client = it->second;
                     }
                     if (client.fd > 0) {
                         std::vector<uint8_t> data;
                         message.command = (int)Commands::SEND_DATA_RESPONSE;
                         Utilities::get()->encodePacket(message, data);
-                        if(socketManager.sendData(client.fd, data, data.size(), 0) == 0) {
-                            Database::get()->markMessageAsDelivered(message.id, client_id);
-                        }
+                        socketManager.initiateSend(client.fd, data, 0) ;
+                        Database::get()->markMessageAsDelivered(message.id, client_id);
                     }
                 }
             }
@@ -126,7 +141,7 @@ void Server::sendSimpleResponse(const Client& client, Commands command) {
     message.topic_id = 0;
     std::vector<uint8_t> data;
     Utilities::get()->encodePacket(message, data);
-    socketManager.sendData(client.fd, data, data.size(), 0);
+    socketManager.initiateSend(client.fd, data, 0);
     responseTriggered = false;
 }
 
@@ -226,7 +241,7 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
                 return true;
             }
 
-            clients.emplace(client.id, client);
+            clientsMap.emplace(client.id, client);
 
             std::vector<int> topics = Database::get()->getSubscribedTopics(client.id);
             if(topics.size() == 0) {
@@ -241,7 +256,7 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
             response_message.data.insert(response_message.data.end(), topics.begin(), topics.end());
             std::vector<uint8_t> response;
             Utilities::get()->encodePacket(response_message, response);
-            socketManager.sendData(client.fd, response, response.size(), 0);
+            socketManager.initiateSend(client.fd, response, 0);
             responseTriggered = false;
 
             return true;
@@ -265,7 +280,7 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
             response_message.data.insert(response_message.data.end(), topicName.begin(), topicName.end());
             std::vector<uint8_t> response;
             Utilities::get()->encodePacket(response_message, response);
-            socketManager.sendData(client.fd, response, response.size(), 0);
+            socketManager.initiateSend(client.fd, response, 0);
             responseTriggered = false;
 
             return true;
@@ -274,7 +289,7 @@ bool Server::processMessage(std::vector<uint8_t>& data, Client& client) {
             Database::get()->unsubscribeClientFromAllTopic(client.id);
             Database::get()->deleteClientById(client.id);
             socketManager.closeSocket(client.fd);
-            clients.erase(client.id);
+            clientsMap.erase(client.id);
             return false;
         }
         default:

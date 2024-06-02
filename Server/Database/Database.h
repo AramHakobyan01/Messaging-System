@@ -11,7 +11,7 @@ public:
     static Database* get();
 
     bool insertOrUpdateClient(const std::string& name, uint32_t client_address, int& client_id);
-    bool insertTopic(const std::string &topic_name);
+    int insertTopic(const std::string &topic_name);
     bool subscribeClientToTopic(int client_id, int topic_id);
     bool storeMessage(const Message& message, int& message_id);
 

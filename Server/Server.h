@@ -13,9 +13,8 @@ public:
     [[noreturn]] void start();
 private:
     void initListener();
-    void acceptConnection();
-    void handleClient(const Client& client);
-    void receiveData(Client client);
+    void onAccept(int client_fd);
+    void onReceive(int client_fd, std::vector<uint8_t>& data);
     void sendMessageToClients();
     void sendSimpleResponse(const Client& client, Commands command);
     bool processMessage(std::vector<uint8_t>& data, Client& client);
@@ -24,7 +23,8 @@ private:
     int listen_fd;
     ServerConfiguration serverConfiguration;
     SocketManager socketManager;
-    std::unordered_map<int, Client> clients;
+    std::unordered_map<int, Client> clientsMap;
+    std::vector<Client> clients;
     std::atomic<bool> responseTriggered;
 };
 

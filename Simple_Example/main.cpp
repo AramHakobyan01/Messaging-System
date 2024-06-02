@@ -14,7 +14,7 @@ void func(const std::vector<uint8_t>& data, const std::string& topic_name, Serve
 
 int main() {
 
-    Client client("172.25.0.3", 8085, 4048);
+    Client client("0.0.0.0", 8085, 4048);
 
     std::cout << " ConnectToServer: " << (int)client.ConnectToServer("name", func) << std::endl;
     std::cout << " CreateTopic: " << (int)client.CreateTopic("topic") << std::endl;

@@ -11,7 +11,7 @@
 SocketManager::SocketManager() {
     if (io_uring_queue_init(QUEUE_DEPTH, &ring, 0) < 0) {
         std::cerr << "io_uring initialization failed: " << strerror(errno) << std::endl;
-        exit(errno); // Exit with errno
+        exit(errno);
     }
 }
 
@@ -22,8 +22,8 @@ SocketManager::~SocketManager() {
 int SocketManager::createSocket(int domain, int type, int protocol) {
     int sockfd = socket(domain, type | SOCK_NONBLOCK, protocol);
     if (sockfd < 0) {
-        std::cerr << "SocketManager creation failed: " << strerror(errno) << std::endl;
-        exit(errno); // Exit with errno
+        std::cerr << "Socket creation failed: " << strerror(errno) << std::endl;
+        exit(errno);
     }
     return sockfd;
 }
@@ -31,86 +31,107 @@ int SocketManager::createSocket(int domain, int type, int protocol) {
 void SocketManager::bindSocket(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     if (bind(sockfd, addr, addrlen) < 0) {
         std::cerr << "Binding failed: " << strerror(errno) << std::endl;
-        exit(errno); // Exit with errno
+        exit(errno);
     }
 }
 
 void SocketManager::listenSocket(int sockfd, int backlog) {
     if (listen(sockfd, backlog) < 0) {
         std::cerr << "Listening failed: " << strerror(errno) << std::endl;
-        exit(errno); // Exit with errno
+        exit(errno);
     }
 }
 
-
-int SocketManager::acceptSocket(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
-    int client_fd = accept4(sockfd, addr, addrlen, SOCK_NONBLOCK);
-    if (client_fd < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            std::cerr << "Accepting connection failed: " << strerror(errno) << std::endl;
-            exit(errno); // Exit with errno
-        }
-    }
-    return client_fd;
+void SocketManager::initiateAccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+    auto* opData = new OperationData{sockfd, {}, 0};
+    struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+    io_uring_prep_accept(sqe, sockfd, addr, addrlen, 0);
+    io_uring_sqe_set_data(sqe, opData);
+    io_uring_submit(&ring);
 }
 
-int SocketManager::receiveData(int sockfd, std::vector<uint8_t> &data, size_t len, int flags) {
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-    uint8_t* tmpBuf = new uint8_t[len];
-    io_uring_prep_recv(sqe, sockfd, tmpBuf, len, flags);
-    io_uring_sqe_set_data(sqe, nullptr);
-    if (io_uring_submit(&ring) < 0) {
-        std::cerr << "io_uring_submit failed: " << strerror(errno) << std::endl;
-        return -1; // Return error code
-    }
-
-    // Wait for completion
-    struct io_uring_cqe *cqe;
-    if (io_uring_wait_cqe(&ring, &cqe) < 0) {
-        std::cerr << "io_uring_wait_cqe failed: " << strerror(errno) << std::endl;
-        return -1; // Return error code
-    }
-
-    // Check if the operation was successful
-    if (cqe->res < 0) {
-        std::cerr << "Receive failed for sockfd: " << sockfd << ": " << strerror(-cqe->res) << std::endl;
-        return -1; // Return error code
-    }
-
-    int recv_size = cqe->res;
-    // Release the completion queue entry
-    io_uring_cqe_seen(&ring, cqe);
-
-    data.insert(data.end(), tmpBuf, tmpBuf + recv_size);
-    delete[] tmpBuf;
-    return recv_size;
+void SocketManager::initiateReceive(int sockfd, size_t len, int flags) {
+    auto* opData = new OperationData{sockfd, std::vector<uint8_t>(len), len};
+    struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+    io_uring_prep_recv(sqe, sockfd, opData->buffer.data(), len, flags);
+    io_uring_sqe_set_data(sqe, opData);
+    io_uring_submit(&ring);
 }
 
-int SocketManager::sendData(int sockfd, const std::vector<uint8_t> &data, size_t len, int flags) {
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_send(sqe, sockfd, data.data(), len, flags);
-    io_uring_sqe_set_data(sqe, (void *) data.data()); // Set buffer pointer as user data
-    if (io_uring_submit(&ring) < 0) {
-        std::cerr << "io_uring_submit failed: " << strerror(errno) << std::endl;
-        return -1; // Return error code
-    }
-
-    // Wait for completion
-    struct io_uring_cqe *cqe;
-    if (io_uring_wait_cqe(&ring, &cqe) < 0) {
-        std::cerr << "io_uring_wait_cqe failed: " << strerror(errno) << std::endl;
-        return -1; // Return error code
-    }
-
-    // Release the completion queue entry
-    io_uring_cqe_seen(&ring, cqe);
-
-    return 0;
+void SocketManager::initiateSend(int sockfd, const std::vector<uint8_t> &data, int flags) {
+    auto* opData = new OperationData{sockfd, data, data.size()};
+    struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+    io_uring_prep_send(sqe, sockfd, opData->buffer.data(), data.size(), flags);
+    io_uring_sqe_set_data(sqe, opData);
+    io_uring_submit(&ring);
 }
-
 
 void SocketManager::closeSocket(int sockfd) {
     if (sockfd >= 0) {
         close(sockfd);
     }
+}
+
+void SocketManager::processEvents() {
+    struct io_uring_cqe* cqe;
+    while (true) {
+        int ret = io_uring_wait_cqe(&ring, &cqe);
+        if (ret < 0) {
+            std::cerr << "io_uring_wait_cqe failed: " << strerror(-ret) << std::endl;
+            break;
+        }
+
+        auto* opData = static_cast<OperationData*>(io_uring_cqe_get_data(cqe));
+        if (cqe->res >= 0) {
+            if (cqe->flags & IORING_CQE_F_MORE) {
+                // handle batched completions if needed
+            }
+
+            if (opData->buffer.size() == 0) {
+                handleAccept(cqe);
+            } else if ((int)opData->buffer[1] < 8) {
+                handleReceive(cqe);
+            } else if ((int)opData->buffer[1] >= 8) {
+                handleSend(cqe);
+            }
+        } else {
+            std::cerr << "Operation failed: " << strerror(-cqe->res) << std::endl;
+        }
+
+        io_uring_cqe_seen(&ring, cqe);
+    }
+}
+
+void SocketManager::handleAccept(struct io_uring_cqe* cqe) {
+    auto* opData = static_cast<OperationData*>(io_uring_cqe_get_data(cqe));
+    int client_fd = cqe->res;
+    if (client_fd >= 0) {
+        if (onAccept) {
+            onAccept(client_fd);
+        }
+    }
+    delete opData;
+}
+
+void SocketManager::handleReceive(struct io_uring_cqe* cqe) {
+    auto* opData = static_cast<OperationData*>(io_uring_cqe_get_data(cqe));
+    ssize_t recv_size = cqe->res;
+    if (recv_size >= 0) {
+        opData->buffer.resize(recv_size);
+        if (onReceive) {
+            onReceive(opData->sockfd, opData->buffer);
+        }
+    }
+    delete opData;
+}
+
+void SocketManager::handleSend(struct io_uring_cqe* cqe) {
+    auto* opData = static_cast<OperationData*>(io_uring_cqe_get_data(cqe));
+    ssize_t sent_size = cqe->res;
+    if (sent_size >= 0) {
+        if (onSend) {
+            onSend(opData->sockfd);
+        }
+    }
+    delete opData;
 }

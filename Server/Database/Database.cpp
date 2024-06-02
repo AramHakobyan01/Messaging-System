@@ -24,13 +24,13 @@ Database* Database::get() {
     return &database;
 }
 
-bool Database::insertTopic(const std::string& topic_name) {
+int Database::insertTopic(const std::string& topic_name) {
     const char* sql = "INSERT INTO topics (name) VALUES (?);";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         std::cerr << "SQL error (prepare): " << sqlite3_errmsg(db) << std::endl;
-        return false;
+        return -1;
     }
 
     sqlite3_bind_text(stmt, 1, topic_name.c_str(), -1, SQLITE_STATIC);
@@ -39,11 +39,11 @@ bool Database::insertTopic(const std::string& topic_name) {
     if (rc != SQLITE_DONE) {
         std::cerr << "SQL error (step): " << sqlite3_errmsg(db) << std::endl;
         sqlite3_finalize(stmt);
-        return false;
+        return -1;
     }
 
     sqlite3_finalize(stmt);
-    return true;
+    return sqlite3_last_insert_rowid(db);
 }
 
 bool Database::insertOrUpdateClient(const std::string& name, uint32_t client_address, int& client_id) {
